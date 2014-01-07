@@ -3,7 +3,7 @@ DollyStepper::DollyStepper(unsigned char dir_pin, unsigned char step_pin, char e
   _step_pin = step_pin;
   _dir_pin = dir_pin;
   _enable_pin = enable_pin;
-  _freq = 200;//163;
+  _freq = 170;//163;
   _steps_per_mm = 161.3;
   _step_direction = 1;
   

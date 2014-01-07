@@ -7,6 +7,7 @@
 DollyStepper stepper(DIR_PIN, STEP_PIN,STEPPER_ENABLE_PIN);
 boolean dolly_is_home = false;
 boolean dolly_is_away = false;
+boolean from_pause = false;
 unsigned char program_state = STATE_INIT;
 unsigned char new_program_state = STATE_INIT;
 LCDKeypad lcd;
@@ -165,6 +166,35 @@ void loop() {
         }
       }
       while(!(buttonPressed==KEYPAD_SELECT));
+      new_program_state = STATE_ASK_PHOTOS_PER_INTERVAL;
+      break;
+      
+    case STATE_ASK_PHOTOS_PER_INTERVAL:
+      do
+      {
+        buttonPressed=waitButton();
+        if(buttonPressed == KEYPAD_UP)
+        {
+          photos_per_interval = 3;
+          lcd.setCursor(0,1);
+          lcd.print(String(photos_per_interval) + " ");
+          lcd.write(2);
+          lcd.write(' ');
+          lcd.write(3);
+          lcd.print("  ");
+        }
+        else if(buttonPressed == KEYPAD_DOWN)
+        {
+          photos_per_interval = 1;
+          lcd.setCursor(0,1);
+          lcd.print(String(photos_per_interval) + " ");
+          lcd.write(2);
+          lcd.write(' ');
+          lcd.write(3);
+          lcd.print("  ");
+        }
+      }
+      while(!(buttonPressed==KEYPAD_SELECT));
       new_program_state = STATE_ASK_TOTAL_TIME;
       break;
     case STATE_ASK_TOTAL_TIME:
@@ -225,6 +255,7 @@ void loop() {
           {
             //Serial.println("photo"+String(photos_taken));
             take_photo();
+            delay(1000);
           }
           release_focus();
           photos_taken++;
@@ -235,6 +266,39 @@ void loop() {
         }
         if(photos_taken >= n_photos || dolly_is_away)
           new_program_state = STATE_ASK_HOME;
+          
+        if ((buttonPressed=lcd.button()) == KEYPAD_UP)
+          new_program_state = STATE_PAUSE;
+        else if ((buttonPressed=lcd.button()) == KEYPAD_DOWN)
+          new_program_state = STATE_ASK_STOP;
+        break;
+    case STATE_ASK_STOP:
+        do
+          {
+            buttonPressed=waitButton();
+          }
+        while(!(buttonPressed==KEYPAD_UP || buttonPressed==KEYPAD_DOWN));
+          if(buttonPressed == KEYPAD_UP) //YES, Stop
+          new_program_state = STATE_ASK_HOME;
+          else if(buttonPressed == KEYPAD_DOWN) //NO, continue
+          {
+            new_program_state = STATE_TIMELAPSE;
+            from_pause = true;
+          }
+        break;
+     case STATE_PAUSE:
+       do
+          {
+            buttonPressed=waitButton();
+          }
+        while(!(buttonPressed==KEYPAD_UP || buttonPressed==KEYPAD_DOWN));
+          if(buttonPressed == KEYPAD_UP) //YES, Resume
+          {
+            new_program_state = STATE_TIMELAPSE;
+            from_pause = true;
+          }
+          else if(buttonPressed == KEYPAD_DOWN) //NO, Stop
+            new_program_state = STATE_ASK_STOP;
         break;
   }
   
@@ -253,6 +317,13 @@ void loop() {
         lcd.write(3);
         lcd.print(": NO");
         break;
+      case STATE_GO_HOME:
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Please Wait...");
+        //stepper.set_freq(400);
+        stepper.move(-1);
+        break;
       case STATE_ASK_INTERVAL:
         lcd.clear();
         lcd.setCursor(0,0);
@@ -264,12 +335,16 @@ void loop() {
         lcd.write(3);
         lcd.write(' ');
         break;
-      case STATE_GO_HOME:
+      case STATE_ASK_PHOTOS_PER_INTERVAL:
         lcd.clear();
         lcd.setCursor(0,0);
-        lcd.print("Please Wait...");
-        //stepper.set_freq(400);
-        stepper.move(-1);
+        lcd.print("Photos P/Inter.:");
+        lcd.setCursor(0,1);
+        lcd.print(String(photos_per_interval) + " ");
+        lcd.write(2);
+        lcd.write(' ');
+        lcd.write(3);
+        lcd.write(' ');
         break;
       case STATE_ASK_TOTAL_TIME:
         temp = TOTAL_LENGTH*STEPS_PER_MM*MIN_INTERVAL/((double)stepper.get_freq()*MAX_FOCUS_TIME);
@@ -304,8 +379,24 @@ void loop() {
         lcd.print(": NO");
         break;
       case STATE_TIMELAPSE:
-        time_last_photo = time;
-        photos_taken=0;
+        if (from_pause == false)
+        {
+          time_last_photo = time;
+          photos_taken=0;
+          press_focus();
+          //TODO: photos per interval should be configured on startup
+          for(i=0; i<photos_per_interval; i++)
+          {
+            //Serial.println("photo"+String(photos_taken));
+            take_photo();
+            delay(1000);
+          }
+          release_focus();
+          Serial.println("1st photo");
+        }
+        else
+        from_pause = false;
+        
         lcd.clear();
         lcd.print("Photo "+String(photos_taken)+"/"+String(n_photos));
         lcd.setCursor(0,1);
@@ -313,12 +404,26 @@ void loop() {
         lcd.print(": PAUSE ");
         lcd.write(3);
         lcd.print(": STOP");
-        press_focus();
-        //TODO: photos per interval should be configured on startup
-        for(i=0; i<photos_per_interval; i++)
-          take_photo();
-        release_focus();
-        Serial.println("1st photo");
+        break;
+      case STATE_ASK_STOP:
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Stop?");
+        lcd.setCursor(0,1);
+        lcd.write(2);
+        lcd.print(": YES ");
+        lcd.write(3);
+        lcd.print(": NO");
+        break;
+      case STATE_PAUSE:
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Resume?");
+        lcd.setCursor(0,1);
+        lcd.write(2);
+        lcd.print(": YES ");
+        lcd.write(3);
+        lcd.print(": NO");
         break;
     }
   }
